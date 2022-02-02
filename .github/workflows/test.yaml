@@ -1,0 +1,75 @@
+name: MyTest
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "tag: The tag to use for this release"
+        required: true
+        default: v0.3.1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  update_formula_and_create_macos_bottle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: get info
+        run: curl -Lo releaseinfo.json 'https://move2kube.konveyor.io/releaseinfo.json'
+      - id: check
+        name: update the stable formula
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = '${{ github.event.inputs.tag }}';
+            const fs = require('fs');
+            const rel_info = JSON.parse(fs.readFileSync('releaseinfo.json'));
+            console.log('release info', rel_info);
+            if(rel_info.current.release !== tag) return console.log('not gonna update');
+            console.log('updating the stable formula');
+            core.setOutput('proceed', true);
+            core.setOutput('version', tag.replace(/^v/, ''));
+      - run: rm releaseinfo.json && echo '${{ steps.check.outputs.proceed }}' '${{ steps.check.outputs.version }}'
+      - id: update-archives
+        if: ${{ steps.check.outputs.proceed }}
+        run: |
+          for file in *.tar.gz
+          do
+            tar -xzf "$file"
+            mv 'move2kube@${{ steps.check.outputs.version }}' move2kube
+            new_name="${file//@*-/-}"
+            tar -czf "$new_name" move2kube/
+            hash="$(sha256sum "$new_name" | awk '{print $1}')"
+            echo '::set-output name='"${new_name}::${hash}"
+            rm -rf move2kube/
+          done
+          ls ./*.tar.gz
+      - if: ${{ steps.check.outputs.proceed }}
+        name: update formula
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const names_to_hashes = Object.entries(${{ toJSON(steps.update-archives.outputs) }});
+            console.log('names_to_hashes', names_to_hashes);
+            const filename = 'move2kube@${{ steps.check.outputs.version }}.rb';
+            const platform_regex = /:any_skip_relocation, ([^\s]+):\s*"[0-9a-f]+"$/;
+            const fs = require('fs');
+            const find_hash = x => {
+              const platform = platform_regex.exec(x)[1];
+              const name_and_hash = names_to_hashes.find(([k, v]) => !k.includes(platform));
+              if(name_and_hash) return name_and_hash[1];
+              core.setFailed(`failed to find the hash of the .tar.gz file for the platform ${platform}`);
+              return 'deadbeef';
+            };
+            const change_hash = x => x.replace(/"[0-9a-f]+"$/, `"${find_hash(x)}"`);
+            const condition = x => /^\s+sha256 cellar.*"[0-9a-f]+"$/.test(x);
+            const lines = fs.readFileSync(filename).toString().split('\n').map(line => condition(line) ? change_hash(line) : line);
+            lines[0] = 'class Move2kube < Formula';
+            fs.writeFileSync('move2kube.rb', lines.join('\n'));
+      - if: ${{ steps.check.outputs.proceed }}
+        run: ls && cat move2kube.rb
