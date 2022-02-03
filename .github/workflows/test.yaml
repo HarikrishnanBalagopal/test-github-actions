@@ -37,7 +37,7 @@ jobs:
       - id: update-archives
         if: ${{ steps.check.outputs.proceed }}
         run: |
-          for file in *.tar.gz
+          for file in *.bottle.tar.gz
           do
             tar -xzf "$file"
             mv 'move2kube@${{ steps.check.outputs.version }}' move2kube
