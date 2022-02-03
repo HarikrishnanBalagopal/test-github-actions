@@ -44,6 +44,7 @@ jobs:
             new_name="${file//@*-/-}"
             tar -czf "$new_name" move2kube/
             hash="$(sha256sum "$new_name" | awk '{print $1}')"
+            echo "new_name ${new_name} hash ${hash}"
             echo '::set-output name='"${new_name}::${hash}"
             rm -rf move2kube/
           done
@@ -61,7 +62,7 @@ jobs:
             const fs = require('fs');
             const find_hash = x => {
               const platform = platform_regex.exec(x)[1];
-              const name_and_hash = names_to_hashes.find(([k, v]) => false && k.includes(platform));
+              const name_and_hash = names_to_hashes.find(([k, v]) => k.includes(platform));
               if(name_and_hash) return name_and_hash[1];
               core.setFailed(`failed to find the hash of the .tar.gz file for the platform ${platform}`);
               return 'deadbeef';
