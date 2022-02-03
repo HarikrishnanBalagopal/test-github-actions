@@ -19,6 +19,18 @@ jobs:
       - uses: actions/checkout@v2
       - name: get info
         run: curl -Lo releaseinfo.json 'https://move2kube.konveyor.io/releaseinfo.json'
+      - id: new_formula
+        name: get new formula filename
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = '${{ github.event.inputs.tag }}'.slice(1);
+            const new_formula_file = './Formula/move2kube@' + tag + '.rb';
+            return new_formula_file;
+      - run: echo '${{ steps.new_formula.outputs.result }}' '${{fromJSON(steps.new_formula.outputs.result)}}'
+      - run: echo '[ "${{steps.new_formula.outputs.result}}", "./Formula/move2kube.rb" ]'
+      - run: echo '[ "${{fromJSON(steps.new_formula.outputs.result)}}", "./Formula/move2kube.rb" ]'
       - id: check
         name: update the stable formula
         uses: actions/github-script@v3
